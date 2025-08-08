@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tyler's Snake — Composer Edition</title>
+  <style>
+    :root{
+      --bg:#0a0a0f;
+      --panel:#151521;
+      --accent:#22d3ee; /* cyan */
+      --accent2:#f59e0b; /* amber */
+      --text:#f4f4f5;
+      --muted:#a1a1aa;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;min-height:100svh;display:grid;place-items:center;
+      background:
+        radial-gradient(900px 600px at 70% -10%, #132233, transparent),
+        linear-gradient(180deg, #0b0b12, var(--bg));
+      font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial
+    }
+    .wrap{width:min(95vw,1000px);display:grid;gap:14px;grid-template-columns:1fr;}
+    header{display:flex;justify-content:space-between;align-items:center;color:var(--text);flex-wrap:wrap;gap:10px}
+    h1{font-size:22px;margin:0;letter-spacing:.4px;white-space:nowrap}
+    .byline{color:var(--muted);font-size:12px}
+    .hud{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .badge{background:var(--panel);padding:8px 12px;border-radius:12px;color:var(--text);display:flex;gap:8px;align-items:center;box-shadow:0 2px 10px #0006}
+    .badge span{color:var(--accent2)}
+    .controls{display:flex;flex-wrap:wrap;gap:8px}
+    button,select,input[type="checkbox"]{background:var(--panel);color:var(--text);border:1px solid #26263a;border-radius:10px;padding:10px 12px;cursor:pointer;box-shadow:0 2px 10px #0005}
+    button:hover{filter:brightness(1.08)}
+    button.primary{background:linear-gradient(135deg,var(--accent2),#eab308);color:#231b09}
+    .board{background:linear-gradient(180deg,#0f1018,#0b0d14);border:1px solid #232538;border-radius:20px;padding:16px;display:grid;grid-template-columns:1fr;gap:10px;box-shadow:0 10px 40px #0007}
+    canvas{width:100%;height:auto;image-rendering:pixelated;background:#0b0d14;border-radius:12px;border:1px solid #1b1f2e}
+    details{color:var(--muted)}
+    .gridRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    input[type="range"]{width:180px}
+    .dpad{display:grid;grid-template-columns:60px 60px 60px;gap:6px;justify-content:center;margin:6px auto 0 auto}
+    .dpad button{height:60px;border-radius:14px}
+    .dpad .blank{visibility:hidden}
+    footer{color:#8b94a3;text-align:center;font-size:12px;margin-top:4px}
+    .cfg{display:flex;flex-wrap:wrap;gap:8px}
+    .cfg label{display:flex;align-items:center;gap:6px}
+    .nowplaying{font-size:12px;color:var(--muted)}
+    .legend{font-size:12px;color:var(--muted)}
+    .pill{padding:6px 10px;border-radius:999px;background:#111425;border:1px solid #26304a}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>🎼 Tyler's Snake — Composer Edition</h1>
+        <div class="byline">For Tyler — film composer & music-theory head. Eat notes, build motifs, avoid self-collisions.</div>
+      </div>
+      <div class="hud">
+        <div class="badge">Score: <span id="score">0</span></div>
+        <div class="badge">Best: <span id="best">0</span></div>
+        <div class="controls">
+          <button id="start" class="primary">Start</button>
+          <button id="pause">Pause</button>
+          <button id="reset">Reset</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="board">
+      <canvas id="game" width="600" height="600"></canvas>
+
+      <div class="gridRow cfg">
+        <label>Speed <small>(ticks/sec)</small> <input id="speed" type="range" min="5" max="25" value="10"/></label>
+        <label>Grid <select id="grid">
+          <option value="18" selected>18×18</option>
+          <option value="22">22×22</option>
+          <option value="26">26×26</option>
+          <option value="30">30×30</option>
+        </select></label>
+        <label><input id="wrap" type="checkbox" checked/> Wrap walls</label>
+        <label><input id="sound" type="checkbox" checked/> Sound</label>
+        <span class="pill">
+          Root <select id="root"></select>
+        </span>
+        <span class="pill">
+          Scale <select id="scale">
+            <option value="min_pent" selected>Minor Pentatonic</option>
+            <option value="dorian">Dorian</option>
+            <option value="lydian">Lydian</option>
+            <option value="harm_minor">Harmonic Minor</option>
+            <option value="whole_tone">Whole Tone</option>
+          </select>
+        </span>
+        <span class="pill">
+          Instrument <select id="instrument">
+            <option value="pluck" selected>Pluck</option>
+            <option value="sine">Sine</option>
+            <option value="triangle">Triangle</option>
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+          </select>
+        </span>
+        <label class="pill"><input id="echo" type="checkbox" checked/> Echo</label>
+        <label class="pill"><input id="chordStreak" type="checkbox" checked/> Chord on 5-streak</label>
+        <label class="pill"><input id="showNames" type="checkbox" checked/> Note names</label>
+      </div>
+
+      <div class="gridRow nowplaying">
+        <span>Key: <strong id="keyLabel">E minor pentatonic</strong></span>
+        <span>• Last: <strong id="lastNote">–</strong></span>
+        <span>• Streak: <strong id="streak">0</strong></span>
+      </div>
+
+      <details>
+        <summary>How to play</summary>
+        <ul>
+          <li>Use ⬅️ ⬆️ ⮟ ➡️ or WASD to steer. Eat notes to grow.</li>
+          <li>Each note maps to your selected key/scale; every 5-note streak can auto-voice a 1–3–5 triad.</li>
+          <li>Change key, mode, or instrument on the fly. Spacebar toggles pause.</li>
+        </ul>
+      </details>
+      <div class="dpad" aria-label="On-screen controls">
+        <span class="blank"></span>
+        <button data-dir="up">⬆️</button>
+        <span class="blank"></span>
+        <button data-dir="left">⬅️</button>
+        <button data-dir="down">⬇️</button>
+        <button data-dir="right">➡️</button>
+      </div>
+    </div>
+
+    <footer>Built with love. If you want MIDI export or custom voicings (drop-2, quartal), say the word.</footer>
+  </div>
+
+  <script>
+  (()=>{
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const startBtn = document.getElementById('start');
+    const pauseBtn = document.getElementById('pause');
+    const resetBtn = document.getElementById('reset');
+    const speedEl = document.getElementById('speed');
+    const gridEl = document.getElementById('grid');
+    const wrapEl = document.getElementById('wrap');
+    const soundEl = document.getElementById('sound');
+    const rootEl = document.getElementById('root');
+    const scaleEl = document.getElementById('scale');
+    const instrEl = document.getElementById('instrument');
+    const echoEl = document.getElementById('echo');
+    const chordStreakEl = document.getElementById('chordStreak');
+    const showNamesEl = document.getElementById('showNames');
+    const keyLabelEl = document.getElementById('keyLabel');
+    const lastNoteEl = document.getElementById('lastNote');
+    const streakEl = document.getElementById('streak');
+
+    // Populate roots
+    const ROOTS = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+    ROOTS.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; rootEl.appendChild(o); });
+    rootEl.value = 'E';
+
+    // WebAudio synth
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audio;
+    function ensureAudio(){ if(!audio) audio = new AudioCtx(); }
+    function midiToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
+    const NAME_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function midiName(m){
+      const n = NAME_SHARP[m%12];
+      const o = Math.floor(m/12)-1;
+      return n+o;
+    }
+
+    // Scales (intervals in semitones from root)
+    const SCALES = {
+      min_pent: {name:'minor pentatonic', steps:[0,3,5,7,10]},
+      dorian:   {name:'dorian', steps:[0,2,3,5,7,9,10]},
+      lydian:   {name:'lydian', steps:[0,2,4,6,7,9,11]},
+      harm_minor:{name:'harmonic minor', steps:[0,2,3,5,7,8,11]},
+      whole_tone:{name:'whole tone', steps:[0,2,4,6,8,10]}
+    };
+
+    function keyLabel(){ return rootEl.value+' '+SCALES[scaleEl.value].name; }
+
+    // Build a scale palette across octaves (MIDI 48..84 by default)
+    function buildScaleMidi(rootName, scaleKey, low=48, high=84){
+      const rootIndex = ROOTS.indexOf(rootName);
+      // Use E=64 as base reference then shift by root offset from E
+      const rootMidiE4 = 64; // E4
+      const offset = ((rootIndex - ROOTS.indexOf('E'))+12)%12;
+      const rootMidi = rootMidiE4 + offset;
+      const steps = SCALES[scaleKey].steps;
+      const out = [];
+      for(let m = low; m<=high; m++){
+        // keep notes that match (m - root) % 12 in steps
+        const rel = (m - rootMidi + 120) % 12;
+        if(steps.includes(rel)) out.push(m);
+      }
+      return out;
+    }
+
+    // Simple plucky voice with optional echo
+    function voice(freq, dur=0.14, type='triangle'){
+      if(!soundEl.checked) return;
+      ensureAudio();
+      const t0 = audio.currentTime;
+      const o = audio.createOscillator();
+      const g = audio.createGain();
+      const filt = audio.createBiquadFilter();
+      o.type = (type==='pluck') ? 'triangle' : type;
+      o.frequency.value = freq;
+      filt.type='lowpass'; filt.frequency.setValueAtTime(1600, t0);
+      o.connect(g); g.connect(filt); filt.connect(audio.destination);
+      // pluck envelope
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.7, t0+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+
+      // echo (simple feedback delay)
+      if(echoEl.checked){
+        const d = audio.createDelay(0.4);
+        const dg = audio.createGain(); dg.gain.value=0.25;
+        filt.connect(d); d.connect(dg); dg.connect(filt);
+      }
+
+      o.start(t0); o.stop(t0+dur+0.03);
+    }
+
+    function playChord(freqs, dur=0.22, type='triangle'){
+      freqs.forEach((f,i)=> setTimeout(()=> voice(f, dur, type), i*8));
+    }
+
+    // Persistent best score
+    let best = Number(localStorage.getItem('snake_best_tyler')||0);
+    bestEl.textContent = best;
+
+    let gridSize = Number(gridEl.value);
+    let tile;
+
+    let state;
+    let lastTime=0, acc=0, tickRate=10, playing=false, paused=false;
+    let streak=0;
+    let scaleMidi = buildScaleMidi(rootEl.value, scaleEl.value);
+
+    const randInt = (n)=> Math.floor(Math.random()*n);
+
+    function resetState(){
+      tile = Math.floor(Math.min(canvas.width, canvas.height) / gridSize);
+      const start = {x: Math.floor(gridSize/2), y: Math.floor(gridSize/2)};
+      state = {
+        snake:[{x:start.x-2,y:start.y},{x:start.x-1,y:start.y},{x:start.x,y:start.y}],
+        dir:{x:1,y:0},
+        nextDir:{x:1,y:0},
+        apple:spawnApple(new Set()),
+        score:0,
+        wrap: wrapEl.checked,
+      };
+      updateScore(0, true);
+      acc=0; lastTime=0; streak=0;
+      lastNoteEl.textContent = '–';
+      streakEl.textContent = '0';
+      scaleMidi = buildScaleMidi(rootEl.value, scaleEl.value);
+      keyLabelEl.textContent = keyLabel();
+    }
+
+    function occupiedSet(){
+      const s = new Set();
+      state.snake.forEach(p=> s.add(p.x+','+p.y));
+      return s;
+    }
+
+    function spawnApple(occupied){
+      let p;
+      do { p = {x: randInt(gridSize), y: randInt(gridSize)} } while (occupied.has(p.x+','+p.y));
+      return p;
+    }
+
+    function updateScore(delta, reset=false){
+      if(reset){ state.score = 0; } else { state.score += delta; }
+      scoreEl.textContent = state.score;
+      if(state.score>best){ best=state.score; localStorage.setItem('snake_best_tyler', best); bestEl.textContent=best; }
+    }
+
+    // THEME RENDERING — stylized studio grid
+    function drawStudio(){
+      const w = canvas.width, h = canvas.height;
+      const grd = ctx.createLinearGradient(0,0, w, h);
+      grd.addColorStop(0, '#10131f');
+      grd.addColorStop(1, '#0a0c14');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,w,h);
+
+      // soft grid like DAW piano roll
+      ctx.lineWidth = 1;
+      for(let y=0; y<gridSize; y++){
+        const yy = Math.floor(y*(h/gridSize));
+        ctx.strokeStyle = y%2? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)';
+        ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(w,yy); ctx.stroke();
+      }
+      for(let x=0; x<gridSize; x++){
+        const xx = Math.floor(x*(w/gridSize));
+        ctx.strokeStyle = x%4? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.06)';
+        ctx.beginPath(); ctx.moveTo(xx,0); ctx.lineTo(xx,h); ctx.stroke();
+      }
+
+      // vignette
+      const vg = ctx.createRadialGradient(w/2,h/2, Math.min(w,h)*0.2, w/2,h/2, Math.max(w,h)*0.7);
+      vg.addColorStop(0,'rgba(0,0,0,0)');
+      vg.addColorStop(1,'rgba(0,0,0,0.35)');
+      ctx.fillStyle = vg; ctx.fillRect(0,0,w,h);
+    }
+
+    function drawPick(x,y, isHead){
+      const cx = (x+0.5)*tile, cy = (y+0.5)*tile, r = tile*0.46;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(((x+y)%2? 1:-1) * 0.12);
+      ctx.beginPath();
+      for(let i=0;i<3;i++){
+        const ang = -Math.PI/2 + i*2*Math.PI/3;
+        const px = Math.cos(ang) * r;
+        const py = Math.sin(ang) * r * 0.95;
+        i===0? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+      }
+      ctx.closePath();
+      const g = ctx.createLinearGradient(-r,-r, r,r);
+      if(isHead){ g.addColorStop(0,'#22d3ee'); g.addColorStop(1,'#67e8f9'); }
+      else { g.addColorStop(0,'#0ea5b7'); g.addColorStop(1,'#22d3ee'); }
+      ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawNote(x,y, name){
+      // Draw a glowing note head; optionally show name
+      const px = (x+0.5)*tile, py=(y+0.5)*tile;
+      ctx.save();
+      // glow
+      const g = ctx.createRadialGradient(px,py,1,px,py,tile*0.9);
+      g.addColorStop(0,'rgba(245,158,11,0.45)');
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,tile,0,Math.PI*2); ctx.fill();
+      // glyph
+      ctx.translate(px,py);
+      ctx.scale(Math.min(tile/22, 1.2), Math.min(tile/22, 1.2));
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath(); ctx.ellipse(-4,6,6,4,0,0,Math.PI*2); ctx.fill();
+      ctx.fillRect(0,-8,2,14);
+      ctx.beginPath();
+      ctx.moveTo(2,-8); ctx.quadraticCurveTo(14,-14,10,-2); ctx.quadraticCurveTo(6,-6,2,-4);
+      ctx.fill();
+      ctx.restore();
+      if(showNamesEl.checked && name){
+        ctx.fillStyle = '#e5e7eb';
+        ctx.font = '12px system-ui, Segoe UI, Roboto, Arial';
+        ctx.textAlign='center';
+        ctx.fillText(name, px, py - tile*0.6);
+      }
+    }
+
+    function draw(){
+      drawStudio();
+      // note (apple)
+      const nm = noteAt(state.apple.x, state.apple.y).name;
+      drawNote(state.apple.x, state.apple.y, nm);
+      // snake as picks
+      for(let i=0;i<state.snake.length;i++){
+        const seg = state.snake[i];
+        const isHead = i===state.snake.length-1;
+        drawPick(seg.x, seg.y, isHead);
+      }
+    }
+
+    // Map grid position -> scale note
+    function noteAt(x,y){
+      if(scaleMidi.length===0) scaleMidi = buildScaleMidi(rootEl.value, scaleEl.value);
+      // Spread scale across grid; x chooses degree index, y chooses octave band
+      const degIndex = (x % Math.max(1, SCALES[scaleEl.value].steps.length));
+      const rowsPerOct = Math.ceil(gridSize / 4); // 4-ish octave span
+      const octaveBand = Math.floor(y / Math.max(1, rowsPerOct));
+      // find first midi in scale for chosen degree, then add 12*octaveBand
+      // Build an ordered list of unique degrees within one octave around 60
+      const degrees = SCALES[scaleEl.value].steps.map(s=> (s+12)%12);
+      // choose base around C4..C6
+      let base = 60; // C4
+      // Find midi with matching degree near base
+      function nearestDegreeMidi(base, degree){
+        // search within +/- 6 semitones
+        for(let off=0; off<=12; off++){
+          for(const sgn of [1,-1]){
+            const m = base + sgn*off;
+            if(((m%12)+12)%12 === degree) return m;
+          }
+        }
+        return base;
+      }
+      const d = degrees[degIndex];
+      let m = nearestDegreeMidi(64, d); // around E4
+      m += octaveBand * 12;
+      // clamp inside palette bounds
+      if(m < 48) m += 12*((48 - m + 11)/12|0);
+      if(m > 84) m -= 12*((m - 84 + 11)/12|0);
+      return { midi:m, freq:midiToFreq(m), name:midiName(m) };
+    }
+
+    function step(){
+      // apply nextDir if not reversing
+      const nd = state.nextDir, d = state.dir;
+      if(nd.x !== -d.x || nd.y !== -d.y){
+        state.dir = nd;
+      }
+
+      const head = state.snake[state.snake.length-1];
+      let nx = head.x + state.dir.x;
+      let ny = head.y + state.dir.y;
+
+      if(state.wrap){
+        nx = (nx + gridSize) % gridSize;
+        ny = (ny + gridSize) % gridSize;
+      }
+
+      // wall hit
+      if(!state.wrap && (nx<0 || ny<0 || nx>=gridSize || ny>=gridSize)){
+        gameOver();
+        return;
+      }
+
+      const newHead = {x:nx, y:ny};
+      // self hit
+      for(let i=0;i<state.snake.length;i++){
+        if(state.snake[i].x===newHead.x && state.snake[i].y===newHead.y){
+          gameOver();
+          return;
+        }
+      }
+
+      state.snake.push(newHead);
+
+      // eat?
+      if(newHead.x===state.apple.x && newHead.y===state.apple.y){
+        const note = noteAt(newHead.x, newHead.y);
+        playEat(note);
+        updateScore(1);
+        streak = (streak+1);
+        streakEl.textContent = String(streak);
+        if(state.score % 3 === 0){ tickRate = Math.min(25, Number(speedEl.value) + Math.floor(state.score/3)); }
+        state.apple = spawnApple(occupiedSet());
+      } else {
+        state.snake.shift();
+        streak = 0; // break phrases when you move without eating
+        streakEl.textContent = '0';
+      }
+    }
+
+    function playEat(note){
+      lastNoteEl.textContent = note.name;
+      const type = instrEl.value;
+      voice(note.freq, 0.14, type);
+      // chord on streaks
+      if(chordStreakEl.checked && streak>0 && streak % 5 === 0){
+        // triad 1-3-5 relative to current note within the scale palette
+        const steps = SCALES[scaleEl.value].steps;
+        const r = steps[0], third = steps[2] ?? steps[1] ?? 4, fifth = steps[4] ?? 7;
+        // Calculate relative semitone offsets by nearest match
+        function closestFrom(baseMidi, semitone){
+          // find midi near baseMidi that is +semitone away modulo 12
+          for(let k=-24;k<=24;k++){
+            const candidate = baseMidi + k;
+            if(((candidate - baseMidi + 120)%12) === (semitone%12+12)%12) return candidate;
+          }
+          return baseMidi + semitone;
+        }
+        const m = note.midi;
+        const triad = [m, closestFrom(m, third), closestFrom(m, fifth)];
+        playChord(triad.map(midiToFreq), 0.22, type==='pluck'?'triangle':type);
+      }
+    }
+
+    function gameOver(){
+      if(soundEl.checked){
+        ensureAudio();
+        // little descend
+        [0, -3, -7].forEach((st,i)=> setTimeout(()=> voice(midiToFreq(64+st), 0.18, 'sine'), i*120));
+      }
+      playing=false;
+      paused=false;
+      overlay('Game Over – score '+state.score+'\\nPress Start to play again');
+    }
+
+    function overlay(text){
+      ctx.save();
+      ctx.fillStyle = '#0008';
+      ctx.fillRect(0,0,canvas.width, canvas.height);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 24px system-ui, Segoe UI, Roboto, Arial';
+      ctx.textAlign='center';
+      text.split('\\n').forEach((line, i)=>{
+        ctx.fillText(line, canvas.width/2, canvas.height/2 + i*28);
+      });
+      ctx.restore();
+    }
+
+    function loop(ts){
+      if(!playing){ draw(); return; }
+      const dt = (ts - lastTime)/1000; lastTime = ts; acc += dt;
+      const stepInterval = 1/ tickRate;
+      while(acc > stepInterval){ acc -= stepInterval; if(!paused) step(); }
+      draw();
+      if(paused){ overlay('Paused'); }
+      requestAnimationFrame(loop);
+    }
+
+    function resizeCanvas(){
+      const size = Math.min(window.innerWidth*0.95, 820);
+      canvas.style.width = Math.floor(size)+'px';
+    }
+
+    // Inputs
+    const dirs = { ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1}, ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0},
+                   w:{x:0,y:-1}, a:{x:-1,y:0}, s:{x:0,y:1}, d:{x:1,y:0} };
+    window.addEventListener('keydown', (e)=>{
+      const k = e.key;
+      if(k===' '){ paused=!paused; return; }
+      if(dirs[k]){ state.nextDir = dirs[k]; }
+      if(soundEl.checked) ensureAudio();
+    });
+
+    document.querySelectorAll('.dpad button[data-dir]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const d = btn.dataset.dir;
+        state.nextDir = d==='up'?{x:0,y:-1}: d==='down'?{x:0,y:1}: d==='left'?{x:-1,y:0}: {x:1,y:0};
+        if(soundEl.checked) ensureAudio();
+      })
+    })
+
+    // UI buttons
+    startBtn.addEventListener('click', ()=>{ resetState(); tickRate = Number(speedEl.value); playing=true; paused=false; requestAnimationFrame(loop); if(soundEl.checked) ensureAudio(); });
+    pauseBtn.addEventListener('click', ()=>{ if(playing){ paused=!paused; }});
+    resetBtn.addEventListener('click', ()=>{ resetState(); draw(); });
+
+    // Config changes
+    gridEl.addEventListener('change', ()=>{ gridSize = Number(gridEl.value); resetState(); draw(); });
+    speedEl.addEventListener('input', ()=>{ if(!playing) tickRate = Number(speedEl.value); });
+    wrapEl.addEventListener('change', ()=>{ state.wrap = wrapEl.checked; });
+    rootEl.addEventListener('change', ()=>{ keyLabelEl.textContent = keyLabel(); scaleMidi = buildScaleMidi(rootEl.value, scaleEl.value); });
+    scaleEl.addEventListener('change', ()=>{ keyLabelEl.textContent = keyLabel(); scaleMidi = buildScaleMidi(rootEl.value, scaleEl.value); });
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // Boot
+    resizeCanvas();
+    resetState();
+    draw();
+    requestAnimationFrame(loop);
+  })();
+  </script>
+</body>
+</html>
